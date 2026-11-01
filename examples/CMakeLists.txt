@@ -24,6 +24,7 @@ set(EXAMPLES
     doc_just
     doc_just_error
     doc_just_stopped
+    ext_transform_completion_channel
     inspect
     intro_1_hello_world
     intro_2_hello_async

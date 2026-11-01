@@ -725,6 +725,26 @@ The expression <code>continues_on(<i>sender</i>, <i>scheduler</i>)</code> create
 </ul>
 </details>
 <details>
+<summary><code>ext_nullopt_as_error(<i>sndr</i>, <i>error</i>) -> <i>sender</i></code></summary>
+<i>Non-standard extension.</i> The expression <code>ext_nullopt_as_error(<i>sndr</i>, <i>error</i>)</code> yields a sender which completes with <code>set_value(<i>value</i>)</code> when <code><i>sndr</i></code> completes with <code>set_value(<i>opt</i>)</code> for an engaged <code>std::optional</code> <code><i>opt</i></code> holding <code><i>value</i></code> and with <code>set_error(<i>error</i>)</code> if <code><i>opt</i></code> is empty. All other completions of <code><i>sndr</i></code> are forwarded unchanged. It is implemented using <code>ext_transform_completion_channel</code>.
+</details>
+<details>
+<summary><code>ext_nullopt_as_stopped(<i>sndr</i>) -> <i>sender</i></code></summary>
+<i>Non-standard extension.</i> The expression <code>ext_nullopt_as_stopped(<i>sndr</i>)</code> yields a sender which completes with <code>set_value(<i>value</i>)</code> when <code><i>sndr</i></code> completes with <code>set_value(<i>opt</i>)</code> for an engaged <code>std::optional</code> <code><i>opt</i></code> holding <code><i>value</i></code> and with <code>set_stopped()</code> if <code><i>opt</i></code> is empty. All other completions of <code><i>sndr</i></code> are forwarded unchanged. It is implemented using <code>ext_transform_completion_channel</code>.
+</details>
+<details>
+<summary><code>ext_nullopt_as_void(<i>sndr</i>) -> <i>sender</i></code></summary>
+<i>Non-standard extension.</i> The expression <code>ext_nullopt_as_void(<i>sndr</i>)</code> yields a sender which completes with <code>set_value(<i>value</i>)</code> when <code><i>sndr</i></code> completes with <code>set_value(<i>opt</i>)</code> for an engaged <code>std::optional</code> <code><i>opt</i></code> holding <code><i>value</i></code> and with <code>set_value()</code> (i.e., the resulting sender has two value completions) if <code><i>opt</i></code> is empty. All other completions of <code><i>sndr</i></code> are forwarded unchanged. It is implemented using <code>ext_transform_completion_channel</code>.
+</details>
+<details>
+<summary><code>ext_transform_completion_channel(<i>sndr</i>, <i>fun</i>, <i>sig-transform</i>) -> <i>sender</i></code></summary>
+<i>Non-standard extension.</i> The expression <code>ext_transform_completion_channel(<i>sndr</i>, <i>fun</i>, <i>sig-transform</i>)</code> yields a sender <code><i>out</i></code> which can reroute the completions of <code><i>sndr</i></code> to different completion channels: for each completion <code><i>Tag</i>(<i>args</i>...)</code> of <code><i>sndr</i></code> it invokes <code><i>fun</i>(<i>rcvr</i>, <i>Tag</i>(), <i>args</i>...)</code> (if this expression is valid) where <code><i>rcvr</i></code> is an lvalue receiver which <code><i>fun</i></code> has to complete using <code>set_value</code>, <code>set_error</code>, or <code>set_stopped</code>. This invocation has to be <code>noexcept</code>. Completions <code><i>fun</i></code> can't be invoked with are forwarded unchanged. <code><i>sig-transform</i></code> is a stateless constexpr function object which is called with the completion signatures of <code><i>sndr</i></code> and returns the completion signatures of <code><i>out</i></code>. The receiver passed to <code><i>fun</i></code> only accepts completions declared by these signatures. <code>ext_each_completion_signature(<i>fn</i>)</code> creates a suitable <code><i>sig-transform</i></code> which calls <code><i>fn</i></code> with a null pointer of type <code><i>Sig</i>*</code> for each signature <code><i>Sig</i></code>, retaining signatures <code><i>fn</i></code> can't be called with, and combines the results.
+</details>
+<details>
+<summary><code>ext_unexpected_as_error(<i>sndr</i>) -> <i>sender</i></code></summary>
+<i>Non-standard extension, available if <code>std::expected</code> is available.</i> The expression <code>ext_unexpected_as_error(<i>sndr</i>)</code> yields a sender which completes with <code>set_value(<i>value</i>)</code> (or <code>set_value()</code> for <code>std::expected&lt;void, E&gt;</code>) when <code><i>sndr</i></code> completes with <code>set_value(<i>exp</i>)</code> for a <code>std::expected</code> <code><i>exp</i></code> holding <code><i>value</i></code> and with <code>set_error(<i>exp</i>.error())</code> if <code><i>exp</i></code> holds an error. All other completions of <code><i>sndr</i></code> are forwarded unchanged. It is implemented using <code>ext_transform_completion_channel</code>.
+</details>
+<details>
 <summary><code>into_variant(<i>sender</i>) -> <i>sender-of</i>&lt;set_value_t(std::variant&lt;<i>Tuple</i>...&gt;)&gt;</code></summary>
 The expression <code>into_variant(<i>sender</i>)</code> creates a sender which transforms the results of possibly multiple <code>set_value</code> completions of <code><i>sender</i></code> into one <code>set_value</code> completion representing the different upstream results as different options of a <code>variant&lt;<i>Tuple</i>...&gt;</code> where each <code><i>Tuple</i></code> is a <code>tuple</code> of values initialized with the respective arguments passed to <code>set_value</code>. The order of options in the <code>variant</code> isn’t specified.
 </details>

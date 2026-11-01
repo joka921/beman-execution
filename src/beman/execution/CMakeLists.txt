@@ -91,6 +91,11 @@ target_sources(
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/exit_scope_sender.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/exit_scope_sender_in.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/exit_scope_sender_of_t.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_nullopt_as_error.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_nullopt_as_stopped.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_nullopt_as_void.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_transform_completion_channel.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_unexpected_as_error.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/find_allocator.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/forward_like.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/forwarding_query.hpp
@@ -129,6 +134,7 @@ target_sources(
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/is_awaitable.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/is_awaiter.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/is_constant.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/is_optional.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/join_env.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/just.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/let.hpp
@@ -326,6 +332,11 @@ if(BEMAN_USE_MODULES)
                     exit_scope_sender.cppm
                     exit_scope_sender_in.cppm
                     exit_scope_sender_of_t.cppm
+                    ext_nullopt_as_error.cppm
+                    ext_nullopt_as_stopped.cppm
+                    ext_nullopt_as_void.cppm
+                    ext_transform_completion_channel.cppm
+                    ext_unexpected_as_error.cppm
                     find_allocator.cppm
                     forward_like.cppm
                     forwarding_query.cppm
@@ -364,6 +375,7 @@ if(BEMAN_USE_MODULES)
                     is_awaitable.cppm
                     is_awaiter.cppm
                     is_constant.cppm
+                    is_optional.cppm
                     is_sender.cppm
                     join_env.cppm
                     just.cppm
