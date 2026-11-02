@@ -14,3 +14,8 @@ export using beman::execution::upon_error;
 export using beman::execution::upon_stopped_t;
 export using beman::execution::upon_stopped;
 } // namespace beman::execution
+
+namespace beman::execution::detail {
+export using beman::execution::detail::then_exception;
+export using beman::execution::detail::then_transform_t;
+} // namespace beman::execution::detail

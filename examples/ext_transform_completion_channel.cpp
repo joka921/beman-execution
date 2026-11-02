@@ -93,5 +93,17 @@ auto main() -> int {
     } catch (const std::string& error) {
         std::cout << "ext_unexpected_as_error -> error: " << error << "\n";
     }
+
+    // ext_error_as_unexpected: a value or an error becomes a value completion with an expected
+    auto checked = [](int value) {
+        if (value < 0)
+            throw std::string("negative value");
+        return value;
+    };
+    for (int value : {17, -1}) {
+        auto [exp] = ex::sync_wait(ex::just(value) | ex::then(checked) | ex::ext_error_as_unexpected()).value();
+        std::cout << "ext_error_as_unexpected(checked(" << value << ")) -> "
+                  << (exp ? "value " + std::to_string(*exp) : std::string("error (exception_ptr)")) << "\n";
+    }
 #endif
 }

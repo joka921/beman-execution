@@ -14,6 +14,7 @@ import std;
 #include <utility>
 #endif
 #ifdef BEMAN_HAS_MODULES
+import beman.execution.detail.allocator_aware_move;
 import beman.execution.detail.basic_sender;
 import beman.execution.detail.callable;
 import beman.execution.detail.completion_signatures;
@@ -35,8 +36,10 @@ import beman.execution.detail.sender_in;
 import beman.execution.detail.set_error;
 import beman.execution.detail.set_stopped;
 import beman.execution.detail.set_value;
+import beman.execution.detail.type_list;
 import beman.execution.detail.valid_completion_signatures;
 #else
+#include <beman/execution/detail/allocator_aware_move.hpp>
 #include <beman/execution/detail/basic_sender.hpp>
 #include <beman/execution/detail/callable.hpp>
 #include <beman/execution/detail/completion_signatures.hpp>
@@ -58,6 +61,7 @@ import beman.execution.detail.valid_completion_signatures;
 #include <beman/execution/detail/set_error.hpp>
 #include <beman/execution/detail/set_stopped.hpp>
 #include <beman/execution/detail/set_value.hpp>
+#include <beman/execution/detail/type_list.hpp>
 #include <beman/execution/detail/valid_completion_signatures.hpp>
 #endif
 
@@ -115,10 +119,14 @@ inline constexpr bool
  *
  * The receiver forwards completions to the downstream receiver but only
  * accepts completions declared by the transformed completion signatures.
+ * These signatures are available as the member type completion_signatures,
+ * e.g., to determine the types of completions which can't be derived from
+ * the arguments of the transformed completion.
  */
 template <typename Receiver, typename Signatures>
 struct ext_transform_completion_channel_receiver {
-    using receiver_concept = ::beman::execution::receiver_tag;
+    using receiver_concept      = ::beman::execution::receiver_tag;
+    using completion_signatures = Signatures;
 
     Receiver* receiver;
 
@@ -153,6 +161,40 @@ struct ext_transform_completion_channel_state {
     using signatures = Signatures;
     Fun fun;
 };
+
+/*!
+ * \brief The argument type of the only value completion with one argument in Signatures.
+ * \headerfile beman/execution.hpp <beman/execution.hpp>
+ * \internal
+ *
+ * Functions used with ext_transform_completion_channel can use this helper with
+ * the completion_signatures of the receiver to determine the type of a value
+ * completion which can't be derived from the arguments of the completion,
+ * e.g., the optional to send for a stopped completion in stopped_as_optional.
+ */
+template <typename>
+struct ext_single_value_argument;
+template <typename... Sigs>
+struct ext_single_value_argument<::beman::execution::completion_signatures<Sigs...>> {
+    template <typename Sig>
+    struct value {
+        using type = ::beman::execution::detail::type_list<>;
+    };
+    template <typename Arg>
+    struct value<::beman::execution::set_value_t(Arg)> {
+        using type = ::beman::execution::detail::type_list<Arg>;
+    };
+    template <typename>
+    struct only;
+    template <typename Arg>
+    struct only<::beman::execution::detail::type_list<Arg>> {
+        using type = Arg;
+    };
+    using type = typename only<::beman::execution::detail::meta::combine<::beman::execution::detail::type_list<>,
+                                                                         typename value<Sigs>::type...>>::type;
+};
+template <typename Signatures>
+using ext_single_value_argument_t = typename ::beman::execution::detail::ext_single_value_argument<Signatures>::type;
 
 /*!
  * \brief Function object transforming each completion signature individually.
@@ -257,16 +299,16 @@ struct ext_transform_completion_channel_t {
     struct impls_for : ::beman::execution::detail::default_impls {
         struct get_state_impl {
             template <typename Sender, typename Receiver>
-            auto operator()(Sender&& sender, Receiver&) const
-                noexcept(::std::is_nothrow_move_constructible_v<
-                         typename ::std::remove_cvref_t<decltype(sender.template get<1>())>::fun_type>) {
+            auto operator()(Sender&& sender, Receiver& receiver) const noexcept {
                 auto&& data = sender.template get<1>();
                 using fun_t = typename ::std::remove_cvref_t<decltype(data)>::fun_type;
                 using sigs_t =
                     decltype(ext_transform_completion_channel_t::
                                  get_completion_signatures<Sender, ::beman::execution::env_of_t<Receiver>>());
+                // like the default get_state the function is moved using the receiver's allocator, if any
                 return ::beman::execution::detail::ext_transform_completion_channel_state<fun_t, sigs_t>{
-                    ::beman::execution::detail::forward_like<Sender>(data.fun)};
+                    ::beman::execution::detail::allocator_aware_move(
+                        ::beman::execution::detail::forward_like<Sender>(data.fun), receiver)};
             }
         };
         static constexpr auto get_state{get_state_impl{}};

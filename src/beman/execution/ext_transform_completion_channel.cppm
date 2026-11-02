@@ -17,4 +17,5 @@ namespace beman::execution::detail {
 export using beman::execution::detail::completion_signatures_transform;
 export using beman::execution::detail::ext_transform_completion_channel_declared;
 export using beman::execution::detail::ext_transform_completion_channel_receiver;
+export using beman::execution::detail::ext_single_value_argument_t;
 } // namespace beman::execution::detail

@@ -31,11 +31,15 @@ export import beman.execution.detail.execution_policy;
 export import beman.execution.detail.exit_scope_sender;
 export import beman.execution.detail.exit_scope_sender_in;
 export import beman.execution.detail.exit_scope_sender_of_t;
+import beman.execution.detail.ext_error_as_unexpected;
 import beman.execution.detail.ext_nullopt_as_error;
 import beman.execution.detail.ext_nullopt_as_stopped;
 import beman.execution.detail.ext_nullopt_as_void;
+import beman.execution.detail.ext_stopped_as_error;
+import beman.execution.detail.ext_stopped_as_optional;
 import beman.execution.detail.ext_transform_completion_channel;
 import beman.execution.detail.ext_unexpected_as_error;
+import beman.execution.detail.ext_upon;
 import beman.execution.detail.forwarding_query;
 import beman.execution.detail.get_allocator;
 import beman.execution.detail.get_await_completion_adaptor;
@@ -260,6 +264,14 @@ export using ::beman::execution::ext_transform_completion_channel_t;
 export using ::beman::execution::ext_transform_completion_channel;
 export using ::beman::execution::ext_each_completion_signature_t;
 export using ::beman::execution::ext_each_completion_signature;
+export using ::beman::execution::ext_upon_error_t;
+export using ::beman::execution::ext_upon_error;
+export using ::beman::execution::ext_upon_stopped_t;
+export using ::beman::execution::ext_upon_stopped;
+export using ::beman::execution::ext_stopped_as_optional_t;
+export using ::beman::execution::ext_stopped_as_optional;
+export using ::beman::execution::ext_stopped_as_error_t;
+export using ::beman::execution::ext_stopped_as_error;
 export using ::beman::execution::ext_nullopt_as_error_t;
 export using ::beman::execution::ext_nullopt_as_error;
 export using ::beman::execution::ext_nullopt_as_stopped_t;
@@ -269,6 +281,8 @@ export using ::beman::execution::ext_nullopt_as_void;
 #if defined(__cpp_lib_expected)
 export using ::beman::execution::ext_unexpected_as_error_t;
 export using ::beman::execution::ext_unexpected_as_error;
+export using ::beman::execution::ext_error_as_unexpected_t;
+export using ::beman::execution::ext_error_as_unexpected;
 #endif
 
 // [exec.util.cmplsig.trans]

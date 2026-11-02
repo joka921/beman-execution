@@ -91,11 +91,15 @@ target_sources(
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/exit_scope_sender.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/exit_scope_sender_in.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/exit_scope_sender_of_t.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_error_as_unexpected.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_nullopt_as_error.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_nullopt_as_stopped.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_nullopt_as_void.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_stopped_as_error.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_stopped_as_optional.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_transform_completion_channel.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_unexpected_as_error.hpp
+                ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/ext_upon.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/find_allocator.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/forward_like.hpp
                 ${PROJECT_SOURCE_DIR}/include/beman/execution/detail/forwarding_query.hpp
@@ -332,11 +336,15 @@ if(BEMAN_USE_MODULES)
                     exit_scope_sender.cppm
                     exit_scope_sender_in.cppm
                     exit_scope_sender_of_t.cppm
+                    ext_error_as_unexpected.cppm
                     ext_nullopt_as_error.cppm
                     ext_nullopt_as_stopped.cppm
                     ext_nullopt_as_void.cppm
+                    ext_stopped_as_error.cppm
+                    ext_stopped_as_optional.cppm
                     ext_transform_completion_channel.cppm
                     ext_unexpected_as_error.cppm
+                    ext_upon.cppm
                     find_allocator.cppm
                     forward_like.cppm
                     forwarding_query.cppm
