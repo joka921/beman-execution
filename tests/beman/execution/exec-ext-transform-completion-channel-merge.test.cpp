@@ -32,7 +32,9 @@ import beman.execution.detail;
 #include <beman/execution/detail/just.hpp>
 #include <beman/execution/detail/make_sender.hpp>
 #include <beman/execution/detail/prop.hpp>
+#include <beman/execution/detail/sync_wait.hpp>
 #include <beman/execution/detail/then.hpp>
+#include <beman/execution/detail/write_env.hpp>
 #endif
 
 // ----------------------------------------------------------------------------
@@ -188,6 +190,46 @@ auto test_env() -> void {
     ASSERT(merged == nested);
     ASSERT(merged == "set_value(int:211&&,)");
 }
+
+auto test_write_env() -> void {
+    // an environment change in the middle of a chain stops the merging: the
+    // functions before write_env see the written (non-forwarding) queries
+    // exactly like nested senders do
+    auto adaptor{test_std::ext_transform_completion_channel(env_fun{}, env_signatures{})};
+    auto written{test_std::env{test_std::prop(get_value_t{}, 5), test_std::prop(non_forwarding_t{}, 3)}};
+    auto env{test_std::env{test_std::prop(get_value_t{}, 1), test_std::prop(non_forwarding_t{}, 2)}};
+
+    auto chain{test_std::just(0) | adaptor | adaptor | test_std::write_env(written) | adaptor | adaptor};
+    // the outer part is merged and its child is the write_env sender ...
+    using write_env_sender = std::remove_cvref_t<decltype(std::move(chain).template get<2>())>;
+    static_assert(not test_detail::ext_transform_completion_channel_sender<write_env_sender>);
+    // ... whose child is the merged inner part
+    static_assert(test_detail::ext_transform_completion_channel_sender<
+                  std::remove_cvref_t<decltype(std::declval<write_env_sender>().template get<2>())>>);
+
+    auto nested{
+        nest_all(nest_all(test_std::just(0), adaptor, adaptor) | test_std::write_env(written), adaptor, adaptor)};
+    auto merged_log{test::run_logged(std::move(chain), env)};
+    ASSERT(merged_log == test::run_logged(std::move(nested), env));
+    // inner part: 5 (written value, non-forwarding hidden), then 10 * 5 + 5 + 100 (the
+    // outermost function before write_env sees the written non-forwarding query);
+    // outer part: 10 * 155 + 1, then 10 * 1551 + 1 + 100
+    ASSERT(merged_log == "set_value(int:15611&&,)");
+}
+
+auto test_stateless() -> void {
+    // stateless functions (empty and trivially copyable) take no space in a merged sender
+    auto sndr{test_std::just(1) | test_std::ext_then(twice{}) | test_std::ext_then(twice{}) |
+              test_std::ext_then(twice{}) | test_std::ext_then(twice{})};
+    using fun_t = std::remove_cvref_t<decltype(sndr.template get<1>().fun)>;
+    static_assert(test_detail::ext_transform_completion_channel_stateless<fun_t>);
+    // a stateful function is stored
+    auto stateful{test_std::just(1) | test_std::ext_then(twice{}) | test_std::ext_nullopt_as_error(std::string("e"))};
+    static_assert(not test_detail::ext_transform_completion_channel_stateless<
+                  std::remove_cvref_t<decltype(stateful.template get<1>().fun)>>);
+    auto [v] = test_std::sync_wait(std::move(sndr)).value();
+    ASSERT(v == 16);
+}
 } // namespace
 
 // ----------------------------------------------------------------------------
@@ -197,4 +239,6 @@ TEST(exec_ext_transform_completion_channel_merge) {
     test_then_upon_chain();
     test_optional_chain();
     test_env();
+    test_write_env();
+    test_stateless();
 }

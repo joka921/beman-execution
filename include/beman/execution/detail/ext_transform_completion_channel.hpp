@@ -8,7 +8,10 @@
 #ifdef BEMAN_HAS_IMPORT_STD
 import std;
 #else
+#include <array>
+#include <bit>
 #include <concepts>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <type_traits>
@@ -194,15 +197,15 @@ struct ext_transform_completion_channel_path_root {
 template <typename Path>
 struct ext_transform_completion_channel_path_inner {
     template <typename Root>
-    static auto get(Root& root) noexcept -> auto& {
-        return Path::get(root).inner;
+    static auto get(Root& root) noexcept -> decltype(auto) {
+        return Path::get(root).inner.get();
     }
 };
 template <typename Path>
 struct ext_transform_completion_channel_path_outer {
     template <typename Root>
-    static auto get(Root& root) noexcept -> auto& {
-        return Path::get(root).outer;
+    static auto get(Root& root) noexcept -> decltype(auto) {
+        return Path::get(root).outer.get();
     }
 };
 
@@ -325,9 +328,66 @@ struct ext_transform_completion_channel_dispatch {
  * exactly as by the nested senders.
  */
 template <typename Inner, typename Outer>
+struct ext_transform_completion_channel_composed;
+
+/*!
+ * \brief Whether a function object is stateless, i.e., it doesn't need to be stored.
+ * \headerfile beman/execution.hpp <beman/execution.hpp>
+ * \internal
+ *
+ * Empty, trivially copyable types are stateless. Wrappers storing only
+ * stateless functions (like the functions used by ext_then) specialize this
+ * variable template: they have a data member and aren't empty.
+ */
+template <typename Fun>
+inline constexpr bool ext_transform_completion_channel_stateless_v{::std::is_empty_v<Fun> &&
+                                                                   ::std::is_trivially_copyable_v<Fun>};
+template <typename Inner, typename Outer>
+inline constexpr bool ext_transform_completion_channel_stateless_v<
+    ::beman::execution::detail::ext_transform_completion_channel_composed<Inner, Outer>>{
+    ::beman::execution::detail::ext_transform_completion_channel_stateless_v<Inner> &&
+    ::beman::execution::detail::ext_transform_completion_channel_stateless_v<Outer>};
+
+template <typename Fun>
+concept ext_transform_completion_channel_stateless =
+    ::std::is_trivially_copyable_v<Fun> &&
+    ::beman::execution::detail::ext_transform_completion_channel_stateless_v<Fun>;
+
+/*!
+ * \brief Storage for one of the functions of a merged sender.
+ * \headerfile beman/execution.hpp <beman/execution.hpp>
+ * \internal
+ *
+ * Owner and Which make the type unique for each position within a merged
+ * function object: otherwise multiple subobjects of the same (empty) type
+ * would need distinct addresses and take up space.
+ */
+template <typename Fun, typename Owner, int Which>
+struct ext_transform_completion_channel_storage {
+    Fun fun;
+    template <typename F>
+    explicit ext_transform_completion_channel_storage(F&& f) noexcept(::std::is_nothrow_constructible_v<Fun, F>)
+        : fun(::std::forward<F>(f)) {}
+    auto get() noexcept -> Fun& { return this->fun; }
+    auto get() const noexcept -> const Fun& { return this->fun; }
+};
+// A stateless function (empty and trivially copyable) isn't stored at all:
+// it has no state and creating, copying, or destroying it has no effects,
+// i.e., a new object is indistinguishable from the one passed in (except
+// for its address). Thus, a merged chain of stateless functions takes no space.
+template <::beman::execution::detail::ext_transform_completion_channel_stateless Fun, typename Owner, int Which>
+struct ext_transform_completion_channel_storage<Fun, Owner, Which> {
+    template <typename F>
+    explicit ext_transform_completion_channel_storage(F&&) noexcept {}
+    static auto get() noexcept -> Fun { return ::std::bit_cast<Fun>(::std::array<::std::byte, sizeof(Fun)>{}); }
+};
+
+template <typename Inner, typename Outer>
 struct ext_transform_completion_channel_composed {
-    [[no_unique_address]] Inner inner;
-    [[no_unique_address]] Outer outer;
+    [[no_unique_address]] ::beman::execution::detail::
+        ext_transform_completion_channel_storage<Inner, ext_transform_completion_channel_composed, 0> inner;
+    [[no_unique_address]] ::beman::execution::detail::
+        ext_transform_completion_channel_storage<Outer, ext_transform_completion_channel_composed, 1> outer;
 
     template <typename I, typename O>
     ext_transform_completion_channel_composed(I&& i, O&& o) noexcept(::std::is_nothrow_constructible_v<Inner, I> &&
@@ -339,14 +399,14 @@ struct ext_transform_completion_channel_composed {
     ext_transform_completion_channel_composed(::std::allocator_arg_t,
                                               const Alloc&                                alloc,
                                               ext_transform_completion_channel_composed&& other)
-        : inner(::std::make_obj_using_allocator<Inner>(alloc, ::std::move(other.inner))),
-          outer(::std::make_obj_using_allocator<Outer>(alloc, ::std::move(other.outer))) {}
+        : inner(::std::make_obj_using_allocator<Inner>(alloc, ::std::move(other.inner.get()))),
+          outer(::std::make_obj_using_allocator<Outer>(alloc, ::std::move(other.outer.get()))) {}
     template <typename Alloc>
     ext_transform_completion_channel_composed(::std::allocator_arg_t,
                                               const Alloc&                                     alloc,
                                               const ext_transform_completion_channel_composed& other)
-        : inner(::std::make_obj_using_allocator<Inner>(alloc, other.inner)),
-          outer(::std::make_obj_using_allocator<Outer>(alloc, other.outer)) {}
+        : inner(::std::make_obj_using_allocator<Inner>(alloc, other.inner.get())),
+          outer(::std::make_obj_using_allocator<Outer>(alloc, other.outer.get())) {}
 };
 
 template <typename Inner, typename Outer>

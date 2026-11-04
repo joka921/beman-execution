@@ -86,6 +86,11 @@ struct ext_upon_fun {
     }
 };
 
+// ext_upon_fun only stores fun: it is stateless if fun is
+template <typename Tag, typename Fun>
+inline constexpr bool ext_transform_completion_channel_stateless_v<::beman::execution::detail::ext_upon_fun<Tag, Fun>>{
+    ::beman::execution::detail::ext_transform_completion_channel_stateless_v<Fun>};
+
 template <typename Tag, typename Fun>
 struct ext_upon_signatures {
     template <typename... Sigs>
