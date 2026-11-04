@@ -44,8 +44,10 @@ import beman.execution.detail.then;
 #endif
 
 // ----------------------------------------------------------------------------
-// ext_upon_error and ext_upon_stopped behave like upon_error and upon_stopped
-// but are implemented using ext_transform_completion_channel. The completion
+// ext_then, ext_upon_error, and ext_upon_stopped behave like then, upon_error,
+// and upon_stopped but are implemented using ext_transform_completion_channel.
+// Thus, chains of these (and other ext_transform_completion_channel based)
+// adaptors are merged into a single sender with one operation state. The completion
 // signatures are computed using the same helpers as then/upon_error/upon_stopped
 // and the completion mirrors then_t::impls_for::complete.
 
@@ -101,7 +103,7 @@ struct ext_upon_signatures {
 };
 
 /*!
- * \brief Type of the ext_upon_error and ext_upon_stopped sender adaptors.
+ * \brief Type of the ext_then, ext_upon_error, and ext_upon_stopped sender adaptors.
  * \headerfile beman/execution.hpp <beman/execution.hpp>
  */
 template <typename Tag>
@@ -126,9 +128,11 @@ struct std::uses_allocator<::beman::execution::detail::ext_upon_fun<Tag, Fun>, A
     : ::std::uses_allocator<Fun, Alloc> {};
 
 namespace beman::execution {
+using ext_then_t         = ::beman::execution::detail::ext_upon_t<::beman::execution::set_value_t>;
 using ext_upon_error_t   = ::beman::execution::detail::ext_upon_t<::beman::execution::set_error_t>;
 using ext_upon_stopped_t = ::beman::execution::detail::ext_upon_t<::beman::execution::set_stopped_t>;
 
+inline constexpr ext_then_t         ext_then{};
 inline constexpr ext_upon_error_t   ext_upon_error{};
 inline constexpr ext_upon_stopped_t ext_upon_stopped{};
 } // namespace beman::execution

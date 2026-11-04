@@ -81,6 +81,11 @@ auto main() -> int {
         std::cout << "ext_nullopt_as_error(lookup(2)) -> error: " << error << "\n";
     }
 
+    // chains of adaptors built on ext_transform_completion_channel are merged into one sender
+    auto chain = ex::just(1) | ex::ext_then([](int key) { return lookup(key); }) | ex::ext_nullopt_as_stopped() |
+                 ex::ext_then([](std::string s) { return s + "!"; });
+    std::cout << "merged chain -> " << std::get<0>(ex::sync_wait(std::move(chain)).value()) << "\n";
+
     // ext_nullopt_as_void: an empty optional becomes a value completion without arguments
     auto r = ex::sync_wait_with_variant(ex::just(2) | ex::then(lookup) | ex::ext_nullopt_as_void());
     std::cout << "ext_nullopt_as_void(lookup(2)) -> variant index " << r.value().index() << "\n";

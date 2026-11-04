@@ -264,6 +264,8 @@ export using ::beman::execution::ext_transform_completion_channel_t;
 export using ::beman::execution::ext_transform_completion_channel;
 export using ::beman::execution::ext_each_completion_signature_t;
 export using ::beman::execution::ext_each_completion_signature;
+export using ::beman::execution::ext_then_t;
+export using ::beman::execution::ext_then;
 export using ::beman::execution::ext_upon_error_t;
 export using ::beman::execution::ext_upon_error;
 export using ::beman::execution::ext_upon_stopped_t;

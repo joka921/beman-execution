@@ -45,6 +45,12 @@ auto check_upon(auto fun) -> void {
                                     [fun](auto sndr) { return test_std::ext_upon_stopped(std::move(sndr), fun); });
 }
 
+template <typename... Sigs>
+auto check_then(auto fun) -> void {
+    test::check_equivalent<Sigs...>([fun](auto sndr) { return test_std::then(std::move(sndr), fun); },
+                                    [fun](auto sndr) { return test_std::ext_then(std::move(sndr), fun); });
+}
+
 struct to_string {
     auto operator()(int e) const noexcept -> std::string { return "error " + std::to_string(e); }
     auto operator()() const noexcept -> std::string { return "stopped"; }
@@ -77,6 +83,13 @@ auto test_equivalence() -> void {
     check_upon<set_error_t(int), set_value_t(int), set_stopped_t()>(returns_ref{&value});
     // no matching completion: the completions are forwarded unchanged
     check_upon<set_value_t(int)>(to_string{});
+
+    check_then<set_value_t(int), set_error_t(int), set_stopped_t()>(to_string{});
+    check_then<set_error_t(int), set_value_t(int), set_value_t(), set_stopped_t()>(to_string{});
+    check_then<set_value_t(int&), set_error_t(int)>(throws{});
+    check_then<set_value_t(int), set_value_t()>(returns_void{});
+    check_then<set_value_t(const int&), set_value_t()>(returns_ref{&value});
+    check_then<set_error_t(int), set_stopped_t()>(to_string{});
 }
 
 // An allocator-aware function object recording the allocator it was constructed with.
@@ -95,6 +108,7 @@ struct allocator_aware_fun {
     auto operator()(int) const noexcept -> std::string {
         return this->resource == std::pmr::get_default_resource() ? "default" : "custom";
     }
+    auto operator()(const std::string& s) const noexcept -> std::string { return s + "," + (*this)(0); }
 };
 
 auto test_allocator() -> void {
@@ -104,9 +118,21 @@ auto test_allocator() -> void {
     auto ext{test::run_logged(test_std::just_error(1) | test_std::ext_upon_error(allocator_aware_fun{}), env)};
     ASSERT(existing == ext);
     ASSERT(ext.find("custom") != std::string::npos);
+
+    // merged chains of ext_ adaptors construct each function using the allocator
+    auto chain{test::run_logged(test_std::just(1) | test_std::then(allocator_aware_fun{}) |
+                                    test_std::then(allocator_aware_fun{}) | test_std::then(allocator_aware_fun{}),
+                                env)};
+    auto ext_chain{test::run_logged(test_std::just(1) | test_std::ext_then(allocator_aware_fun{}) |
+                                        test_std::ext_then(allocator_aware_fun{}) |
+                                        test_std::ext_then(allocator_aware_fun{}),
+                                    env)};
+    ASSERT(chain == ext_chain);
+    ASSERT(ext_chain == "set_value(string:custom,custom,custom&&,)");
 }
 
 auto test_misc() -> void {
+    static_assert(std::same_as<const test_std::ext_then_t, decltype(test_std::ext_then)>);
     static_assert(std::same_as<const test_std::ext_upon_error_t, decltype(test_std::ext_upon_error)>);
     static_assert(std::same_as<const test_std::ext_upon_stopped_t, decltype(test_std::ext_upon_stopped)>);
     auto [v] = test_std::sync_wait(test_std::just_stopped() | test_std::ext_upon_stopped([] { return 42; })).value();

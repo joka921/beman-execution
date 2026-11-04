@@ -27,6 +27,7 @@ list(
     exec-ext-nullopt-as-void.test
     exec-ext-stopped-as-error.test
     exec-ext-stopped-as-optional.test
+    exec-ext-transform-completion-channel-merge.test
     exec-ext-transform-completion-channel.test
     exec-ext-unexpected-as-error.test
     exec-ext-upon.test

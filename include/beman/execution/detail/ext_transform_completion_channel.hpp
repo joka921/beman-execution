@@ -10,6 +10,7 @@ import std;
 #else
 #include <concepts>
 #include <functional>
+#include <memory>
 #include <type_traits>
 #include <utility>
 #endif
@@ -84,6 +85,12 @@ import beman.execution.detail.valid_completion_signatures;
 // The receiver passed to fun only accepts completions declared by the result
 // of sig_transform (after removing cvref qualifiers from the arguments): any
 // other completion results in a compile-time error.
+//
+// If sndr is itself an ext_transform_completion_channel sender, the two
+// senders are merged into one sender whose function object holds both
+// functions. The completions are dispatched as by the nested senders but a
+// chain of these adaptors uses only one operation state, and connecting it
+// doesn't move the child sender through each of the nested operation states.
 // ----------------------------------------------------------------------------
 
 namespace beman::execution::detail {
@@ -94,6 +101,7 @@ concept completion_signatures_transform =
 template <typename Fun, typename SigFun>
 struct ext_transform_completion_channel_data {
     using fun_type = Fun;
+    using sig_type = SigFun;
     Fun                          fun;
     [[no_unique_address]] SigFun sig_transform;
 };
@@ -123,12 +131,32 @@ inline constexpr bool
  * e.g., to determine the types of completions which can't be derived from
  * the arguments of the transformed completion.
  */
+template <typename>
+inline constexpr bool ext_transform_completion_channel_by_value{false};
+
 template <typename Receiver, typename Signatures>
 struct ext_transform_completion_channel_receiver {
     using receiver_concept      = ::beman::execution::receiver_tag;
     using completion_signatures = Signatures;
 
-    Receiver* receiver;
+    // the receivers used inside merged senders are cheap to copy and stored by value
+    ::std::conditional_t<::beman::execution::detail::ext_transform_completion_channel_by_value<Receiver>,
+                         Receiver,
+                         Receiver*>
+        receiver;
+
+    auto target() noexcept -> Receiver& {
+        if constexpr (::beman::execution::detail::ext_transform_completion_channel_by_value<Receiver>)
+            return this->receiver;
+        else
+            return *this->receiver;
+    }
+    auto target() const noexcept -> const Receiver& {
+        if constexpr (::beman::execution::detail::ext_transform_completion_channel_by_value<Receiver>)
+            return this->receiver;
+        else
+            return *this->receiver;
+    }
 
     template <typename... Args>
     auto set_value(Args&&... args) && noexcept -> void {
@@ -136,7 +164,7 @@ struct ext_transform_completion_channel_receiver {
             ::beman::execution::detail::
                 ext_transform_completion_channel_declared<Signatures, ::beman::execution::set_value_t, Args...>,
             "ext_transform_completion_channel: set_value(args...) isn't declared by the signature transform");
-        ::beman::execution::set_value(::std::move(*this->receiver), ::std::forward<Args>(args)...);
+        ::beman::execution::set_value(::std::move(this->target()), ::std::forward<Args>(args)...);
     }
     template <typename Error>
     auto set_error(Error&& error) && noexcept -> void {
@@ -144,21 +172,230 @@ struct ext_transform_completion_channel_receiver {
             ::beman::execution::detail::
                 ext_transform_completion_channel_declared<Signatures, ::beman::execution::set_error_t, Error>,
             "ext_transform_completion_channel: set_error(error) isn't declared by the signature transform");
-        ::beman::execution::set_error(::std::move(*this->receiver), ::std::forward<Error>(error));
+        ::beman::execution::set_error(::std::move(this->target()), ::std::forward<Error>(error));
     }
     auto set_stopped() && noexcept -> void {
         static_assert(
             ::beman::execution::detail::ext_transform_completion_channel_declared<Signatures,
                                                                                   ::beman::execution::set_stopped_t>,
             "ext_transform_completion_channel: set_stopped() isn't declared by the signature transform");
-        ::beman::execution::set_stopped(::std::move(*this->receiver));
+        ::beman::execution::set_stopped(::std::move(this->target()));
     }
-    auto get_env() const noexcept -> decltype(auto) { return ::beman::execution::get_env(*this->receiver); }
+    auto get_env() const noexcept -> decltype(auto) { return ::beman::execution::get_env(this->target()); }
 };
 
-template <typename Fun, typename Signatures>
+// Paths selecting the function of a (possibly composed) function object.
+struct ext_transform_completion_channel_path_root {
+    template <typename Root>
+    static auto get(Root& root) noexcept -> Root& {
+        return root;
+    }
+};
+template <typename Path>
+struct ext_transform_completion_channel_path_inner {
+    template <typename Root>
+    static auto get(Root& root) noexcept -> auto& {
+        return Path::get(root).inner;
+    }
+};
+template <typename Path>
+struct ext_transform_completion_channel_path_outer {
+    template <typename Root>
+    static auto get(Root& root) noexcept -> auto& {
+        return Path::get(root).outer;
+    }
+};
+
+// The last continuation: deliver the completion to the downstream receiver.
+struct ext_transform_completion_channel_deliver {
+    template <typename Root, typename Receiver, typename Tag, typename... Args>
+    static constexpr bool can_complete{::beman::execution::detail::callable<Tag, Receiver, Args...>};
+
+    template <typename Root, typename Receiver, typename Tag, typename... Args>
+    static auto complete(Root&, Receiver& receiver, Tag, Args&&... args) noexcept -> void {
+        Tag()(::std::move(receiver), ::std::forward<Args>(args)...);
+    }
+};
+
+/*!
+ * \brief Receiver continuing with the next function of a merged sender.
+ * \headerfile beman/execution.hpp <beman/execution.hpp>
+ * \internal
+ *
+ * It plays the role of the receiver of a nested operation state: the
+ * completions are passed to the continuation Cont. All of these receivers
+ * consist of the same two pointers (the function object of the merged sender
+ * and the downstream receiver) independent of the position in the chain.
+ */
+template <typename Root, typename Receiver, typename Cont>
+struct ext_transform_completion_channel_chain_receiver {
+    using receiver_concept = ::beman::execution::receiver_tag;
+    Root*     root;
+    Receiver* rcvr;
+
+    template <typename... Args>
+        requires Cont::template
+    can_complete<Root, Receiver, ::beman::execution::set_value_t, Args...> auto set_value(Args&&... args) && noexcept
+        -> void {
+        Cont::complete(*this->root, *this->rcvr, ::beman::execution::set_value_t(), ::std::forward<Args>(args)...);
+    }
+    template <typename Error>
+        requires Cont::template
+    can_complete<Root, Receiver, ::beman::execution::set_error_t, Error> auto set_error(Error&& error) && noexcept
+        -> void {
+        Cont::complete(*this->root, *this->rcvr, ::beman::execution::set_error_t(), ::std::forward<Error>(error));
+    }
+    auto set_stopped() && noexcept -> void
+        requires Cont::template
+    can_complete<Root, Receiver, ::beman::execution::set_stopped_t> {
+        Cont::complete(*this->root, *this->rcvr, ::beman::execution::set_stopped_t());
+    }
+    // like the environment of the receiver of a nested operation state
+    auto get_env() const noexcept -> decltype(auto) {
+        return ::beman::execution::detail::fwd_env(::beman::execution::get_env(*this->rcvr));
+    }
+};
+template <typename Root, typename Receiver, typename Cont>
+inline constexpr bool ext_transform_completion_channel_by_value<
+    ::beman::execution::detail::ext_transform_completion_channel_chain_receiver<Root, Receiver, Cont>>{true};
+
+/*!
+ * \brief Completes a receiver with a completion transformed by a function.
+ * \headerfile beman/execution.hpp <beman/execution.hpp>
+ * \internal
+ *
+ * ChildSigs are the completion signatures of the adapted sender and SigFun
+ * the signature transform. The function is Path::get(root). If it is
+ * invocable with the completion it is called with a checking receiver;
+ * otherwise the completion is forwarded. Either way, the resulting
+ * completion is passed on to the continuation Cont.
+ */
+template <typename Fun,
+          typename SigFun,
+          typename ChildSigs,
+          typename Path = ::beman::execution::detail::ext_transform_completion_channel_path_root,
+          typename Cont = ::beman::execution::detail::ext_transform_completion_channel_deliver>
+struct ext_transform_completion_channel_dispatch {
+    using signatures = decltype(SigFun{}(ChildSigs{}));
+    static_assert(::beman::execution::detail::valid_completion_signatures<signatures>,
+                  "ext_transform_completion_channel: the signature transform has to return completion_signatures");
+
+    static constexpr bool deliver{
+        ::std::same_as<Cont, ::beman::execution::detail::ext_transform_completion_channel_deliver>};
+    template <typename Root, typename Receiver>
+    using target_t = ::std::conditional_t<
+        deliver,
+        Receiver,
+        ::beman::execution::detail::ext_transform_completion_channel_chain_receiver<Root, Receiver, Cont>>;
+    template <typename Root, typename Receiver>
+    using receiver_t =
+        ::beman::execution::detail::ext_transform_completion_channel_receiver<target_t<Root, Receiver>, signatures>;
+
+    template <typename Root, typename Receiver, typename Tag, typename... Args>
+    static constexpr bool can_complete{::std::invocable<Fun, receiver_t<Root, Receiver>&, Tag, Args...> ||
+                                       Cont::template can_complete<Root, Receiver, Tag, Args...>};
+
+    template <typename Root, typename Receiver, typename Tag, typename... Args>
+    static auto complete(Root& root, Receiver& receiver, Tag, Args&&... args) noexcept -> void {
+        if constexpr (::std::invocable<Fun, receiver_t<Root, Receiver>&, Tag, Args...>) {
+            static_assert(::std::is_nothrow_invocable_v<Fun, receiver_t<Root, Receiver>&, Tag, Args...>,
+                          "ext_transform_completion_channel: the function has to be noexcept");
+            receiver_t<Root, Receiver> rcvr{[&] {
+                if constexpr (deliver)
+                    return &receiver;
+                else
+                    return target_t<Root, Receiver>{&root, &receiver};
+            }()};
+            ::std::invoke(::std::move(Path::get(root)), rcvr, Tag(), ::std::forward<Args>(args)...);
+        } else {
+            Cont::complete(root, receiver, Tag(), ::std::forward<Args>(args)...);
+        }
+    }
+};
+
+/*!
+ * \brief The functions of two nested ext_transform_completion_channel senders.
+ * \headerfile beman/execution.hpp <beman/execution.hpp>
+ * \internal
+ *
+ * ext_transform_completion_channel(ext_transform_completion_channel(sndr, f1, s1), f2, s2)
+ * is merged into a single sender ext_transform_completion_channel(sndr,
+ * composed{f1, f2}, composed_signatures<s1, s2>) such that a chain of these
+ * adaptors uses just one operation state. The completions are dispatched
+ * exactly as by the nested senders.
+ */
+template <typename Inner, typename Outer>
+struct ext_transform_completion_channel_composed {
+    [[no_unique_address]] Inner inner;
+    [[no_unique_address]] Outer outer;
+
+    template <typename I, typename O>
+    ext_transform_completion_channel_composed(I&& i, O&& o) noexcept(::std::is_nothrow_constructible_v<Inner, I> &&
+                                                                     ::std::is_nothrow_constructible_v<Outer, O>)
+        : inner(::std::forward<I>(i)), outer(::std::forward<O>(o)) {}
+    // Allocator-extended constructors: like for nested senders each function
+    // is constructed using the receiver's allocator if it is allocator-aware.
+    template <typename Alloc>
+    ext_transform_completion_channel_composed(::std::allocator_arg_t,
+                                              const Alloc&                                alloc,
+                                              ext_transform_completion_channel_composed&& other)
+        : inner(::std::make_obj_using_allocator<Inner>(alloc, ::std::move(other.inner))),
+          outer(::std::make_obj_using_allocator<Outer>(alloc, ::std::move(other.outer))) {}
+    template <typename Alloc>
+    ext_transform_completion_channel_composed(::std::allocator_arg_t,
+                                              const Alloc&                                     alloc,
+                                              const ext_transform_completion_channel_composed& other)
+        : inner(::std::make_obj_using_allocator<Inner>(alloc, other.inner)),
+          outer(::std::make_obj_using_allocator<Outer>(alloc, other.outer)) {}
+};
+
+template <typename Inner, typename Outer>
+struct ext_transform_completion_channel_composed_signatures {
+    template <typename Sigs>
+    consteval auto operator()(Sigs sigs) const {
+        using inner_sigs = decltype(Inner{}(sigs));
+        static_assert(::beman::execution::detail::valid_completion_signatures<inner_sigs>,
+                      "ext_transform_completion_channel: the signature transform has to return completion_signatures");
+        return Outer{}(inner_sigs{});
+    }
+};
+
+// The inner function continues with the outer function which continues with Cont.
+template <typename F1, typename F2, typename S1, typename S2, typename ChildSigs, typename Path, typename Cont>
+struct ext_transform_completion_channel_dispatch<
+    ::beman::execution::detail::ext_transform_completion_channel_composed<F1, F2>,
+    ::beman::execution::detail::ext_transform_completion_channel_composed_signatures<S1, S2>,
+    ChildSigs,
+    Path,
+    Cont> {
+    using inner_signatures = decltype(S1{}(ChildSigs{}));
+    using outer            = ::beman::execution::detail::ext_transform_completion_channel_dispatch<
+        F2,
+        S2,
+        inner_signatures,
+        ::beman::execution::detail::ext_transform_completion_channel_path_outer<Path>,
+        Cont>;
+    using inner = ::beman::execution::detail::ext_transform_completion_channel_dispatch<
+        F1,
+        S1,
+        ChildSigs,
+        ::beman::execution::detail::ext_transform_completion_channel_path_inner<Path>,
+        outer>;
+    using signatures = typename outer::signatures;
+
+    template <typename Root, typename Receiver, typename Tag, typename... Args>
+    static constexpr bool can_complete{inner::template can_complete<Root, Receiver, Tag, Args...>};
+
+    template <typename Root, typename Receiver, typename Tag, typename... Args>
+    static auto complete(Root& root, Receiver& receiver, Tag, Args&&... args) noexcept -> void {
+        inner::complete(root, receiver, Tag(), ::std::forward<Args>(args)...);
+    }
+};
+
+template <typename Fun, typename SigFun, typename ChildSigs>
 struct ext_transform_completion_channel_state {
-    using signatures = Signatures;
+    using dispatch   = ::beman::execution::detail::ext_transform_completion_channel_dispatch<Fun, SigFun, ChildSigs>;
+    using signatures = typename dispatch::signatures;
     Fun fun;
 };
 
@@ -237,6 +474,16 @@ struct ext_each_completion_signature_fn {
     }
 };
 
+struct ext_transform_completion_channel_t;
+
+template <typename>
+inline constexpr bool ext_transform_completion_channel_sender{false};
+template <typename Fun, typename SigFun, typename Child>
+inline constexpr bool ext_transform_completion_channel_sender<::beman::execution::detail::basic_sender<
+    ::beman::execution::detail::ext_transform_completion_channel_t,
+    ::beman::execution::detail::ext_transform_completion_channel_data<Fun, SigFun>,
+    Child>>{true};
+
 /*!
  * \brief Type of the ext_transform_completion_channel sender adaptor.
  * \headerfile beman/execution.hpp <beman/execution.hpp>
@@ -260,6 +507,31 @@ struct ext_transform_completion_channel_t {
                 ::std::forward<Fun>(fun), sig_transform},
             ::std::forward<Sender>(sender));
     }
+    // If the adapted sender is itself an ext_transform_completion_channel
+    // sender the two are merged into one sender whose function invokes both
+    // functions: a chain of these adaptors needs only one operation state.
+    template <::beman::execution::sender                                  Sender,
+              ::beman::execution::detail::movable_value                   Fun,
+              ::beman::execution::detail::completion_signatures_transform SigFun>
+        requires ::beman::execution::detail::ext_transform_completion_channel_sender<::std::remove_cvref_t<Sender>>
+    auto operator()(Sender&& sender, Fun&& fun, SigFun) const {
+        auto&& data{::std::forward<Sender>(sender).template get<1>()};
+        using data_t = ::std::remove_cvref_t<decltype(data)>;
+        using composed_t =
+            ::beman::execution::detail::ext_transform_completion_channel_composed<typename data_t::fun_type,
+                                                                                  ::std::remove_cvref_t<Fun>>;
+        using composed_sig_t =
+            ::beman::execution::detail::ext_transform_completion_channel_composed_signatures<typename data_t::sig_type,
+                                                                                             SigFun>;
+        using data_t2 = ::beman::execution::detail::ext_transform_completion_channel_data<composed_t, composed_sig_t>;
+        using child_t = ::std::remove_cvref_t<decltype(::std::forward<Sender>(sender).template get<2>())>;
+        // constructed directly (instead of using make_sender) to avoid moving the composed function once more
+        return ::beman::execution::detail::basic_sender<ext_transform_completion_channel_t, data_t2, child_t>{
+            *this,
+            data_t2{composed_t(::beman::execution::detail::forward_like<Sender>(data.fun), ::std::forward<Fun>(fun)),
+                    composed_sig_t{}},
+            ::std::forward<Sender>(sender).template get<2>()};
+    }
     template <::beman::execution::sender Sender>
         requires ::beman::execution::detail::nested_sender_has_affine<Sender>
     static auto affine(Sender&& sndr) noexcept {
@@ -277,16 +549,12 @@ struct ext_transform_completion_channel_t {
                               ::beman::execution::detail::ext_transform_completion_channel_data<Fun, SigFun>,
                               Child>,
                           Env...> {
-        static consteval auto get() {
-            using child_sigs_t =
-                decltype(::beman::execution::
-                             get_completion_signatures<Child, ::beman::execution::detail::fwd_env_t<Env>...>());
-            using type = decltype(SigFun{}(child_sigs_t{}));
-            static_assert(
-                ::beman::execution::detail::valid_completion_signatures<type>,
-                "ext_transform_completion_channel: the signature transform has to return completion_signatures");
-            return SigFun{}(child_sigs_t{});
-        }
+        using child_signatures =
+            decltype(::beman::execution::get_completion_signatures<Child,
+                                                                   ::beman::execution::detail::fwd_env_t<Env>...>());
+        using dispatch =
+            ::beman::execution::detail::ext_transform_completion_channel_dispatch<Fun, SigFun, child_signatures>;
+        static consteval auto get() { return typename dispatch::signatures{}; }
     };
 
   public:
@@ -300,13 +568,14 @@ struct ext_transform_completion_channel_t {
         struct get_state_impl {
             template <typename Sender, typename Receiver>
             auto operator()(Sender&& sender, Receiver& receiver) const noexcept {
-                auto&& data = sender.template get<1>();
-                using fun_t = typename ::std::remove_cvref_t<decltype(data)>::fun_type;
-                using sigs_t =
-                    decltype(ext_transform_completion_channel_t::
-                                 get_completion_signatures<Sender, ::beman::execution::env_of_t<Receiver>>());
+                auto&& data        = sender.template get<1>();
+                using data_t       = ::std::remove_cvref_t<decltype(data)>;
+                using child_sigs_t = typename get_signatures<::std::remove_cvref_t<Sender>,
+                                                             ::beman::execution::env_of_t<Receiver>>::child_signatures;
                 // like the default get_state the function is moved using the receiver's allocator, if any
-                return ::beman::execution::detail::ext_transform_completion_channel_state<fun_t, sigs_t>{
+                return ::beman::execution::detail::ext_transform_completion_channel_state<typename data_t::fun_type,
+                                                                                          typename data_t::sig_type,
+                                                                                          child_sigs_t>{
                     ::beman::execution::detail::allocator_aware_move(
                         ::beman::execution::detail::forward_like<Sender>(data.fun), receiver)};
             }
@@ -315,32 +584,20 @@ struct ext_transform_completion_channel_t {
 
         struct complete_impl {
             template <typename Index, typename State, typename Receiver, typename Tag, typename... Args>
-                requires ::std::invocable<decltype(::std::declval<State&>().fun),
-                                          ::beman::execution::detail::ext_transform_completion_channel_receiver<
-                                              Receiver,
-                                              typename State::signatures>&,
-                                          Tag,
-                                          Args...> ||
-                         ::beman::execution::detail::callable<Tag, Receiver, Args...>
-            auto operator()(Index, State& state, Receiver& receiver, Tag, Args&&... args) const noexcept -> void {
-                using fun_t = decltype(::std::declval<State&>().fun);
-                using receiver_t =
-                    ::beman::execution::detail::ext_transform_completion_channel_receiver<Receiver,
-                                                                                          typename State::signatures>;
-                if constexpr (::std::invocable<fun_t, receiver_t&, Tag, Args...>) {
-                    static_assert(::std::is_nothrow_invocable_v<fun_t, receiver_t&, Tag, Args...>,
-                                  "ext_transform_completion_channel: the function has to be noexcept");
-                    receiver_t rcvr{&receiver};
-                    ::std::invoke(::std::move(state.fun), rcvr, Tag(), ::std::forward<Args>(args)...);
-                } else {
-                    Tag()(::std::move(receiver), ::std::forward<Args>(args)...);
-                }
+                requires State::dispatch::template
+            can_complete<decltype(::std::declval<State&>().fun), Receiver, Tag, Args...> auto
+            operator()(Index, State& state, Receiver& receiver, Tag, Args&&... args) const noexcept -> void {
+                State::dispatch::complete(state.fun, receiver, Tag(), ::std::forward<Args>(args)...);
             }
         };
         static constexpr auto complete{complete_impl{}};
     };
 };
 } // namespace beman::execution::detail
+
+template <typename Inner, typename Outer, typename Alloc>
+struct std::uses_allocator<::beman::execution::detail::ext_transform_completion_channel_composed<Inner, Outer>, Alloc>
+    : ::std::bool_constant<::std::uses_allocator_v<Inner, Alloc> || ::std::uses_allocator_v<Outer, Alloc>> {};
 
 namespace beman::execution {
 using ext_transform_completion_channel_t = ::beman::execution::detail::ext_transform_completion_channel_t;

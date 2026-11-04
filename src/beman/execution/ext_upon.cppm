@@ -7,6 +7,8 @@ module;
 export module beman.execution.detail.ext_upon;
 
 namespace beman::execution {
+export using beman::execution::ext_then_t;
+export using beman::execution::ext_then;
 export using beman::execution::ext_upon_error_t;
 export using beman::execution::ext_upon_error;
 export using beman::execution::ext_upon_stopped_t;
