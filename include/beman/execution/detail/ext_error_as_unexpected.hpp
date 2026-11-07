@@ -125,13 +125,12 @@ struct ext_error_as_unexpected_signatures {
 };
 
 // The transformed signatures contain exactly one value completion:
-// set_value_t(std::expected<V, E>). The receiver's signatures are used to
-// determine this type as each completion of the sender only knows V or E.
+// set_value_t(std::expected<V, E>). The signatures passed to the function are
+// used to determine this type as each completion of the sender only knows V or E.
 struct ext_error_as_unexpected_fun {
-    template <typename Receiver, typename Construct>
+    template <typename Signatures, typename Receiver, typename Construct>
     static auto complete(Receiver& receiver, Construct construct) noexcept -> void {
-        using expected_t =
-            ::beman::execution::detail::ext_single_value_argument_t<typename Receiver::completion_signatures>;
+        using expected_t = ::beman::execution::detail::ext_single_value_argument_t<Signatures>;
         if constexpr (noexcept(construct.template operator()<expected_t>())) {
             ::beman::execution::set_value(::std::move(receiver), construct.template operator()<expected_t>());
         } else {
@@ -143,20 +142,23 @@ struct ext_error_as_unexpected_fun {
         }
     }
 
-    template <typename Receiver, typename... Args>
+    template <typename Receiver, typename Signatures, typename... Args>
         requires(sizeof...(Args) <= 1)
-    auto operator()(Receiver& receiver, ::beman::execution::set_value_t, Args&&... args) const noexcept -> void {
-        complete(receiver,
-                 [&]<typename Exp>() noexcept(::std::is_nothrow_constructible_v<Exp, ::std::in_place_t, Args...>) {
-                     return Exp(::std::in_place, ::std::forward<Args>(args)...);
-                 });
+    auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_value_t, Args&&... args) const noexcept
+        -> void {
+        complete<Signatures>(
+            receiver,
+            [&]<typename Exp>() noexcept(::std::is_nothrow_constructible_v<Exp, ::std::in_place_t, Args...>) {
+                return Exp(::std::in_place, ::std::forward<Args>(args)...);
+            });
     }
-    template <typename Receiver, typename Error>
-    auto operator()(Receiver& receiver, ::beman::execution::set_error_t, Error&& error) const noexcept -> void {
-        complete(receiver,
-                 [&]<typename Exp>() noexcept(::std::is_nothrow_constructible_v<Exp, ::std::unexpect_t, Error>) {
-                     return Exp(::std::unexpect_t{}, ::std::forward<Error>(error));
-                 });
+    template <typename Receiver, typename Signatures, typename Error>
+    auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_error_t, Error&& error) const noexcept
+        -> void {
+        complete<Signatures>(
+            receiver, [&]<typename Exp>() noexcept(::std::is_nothrow_constructible_v<Exp, ::std::unexpect_t, Error>) {
+                return Exp(::std::unexpect_t{}, ::std::forward<Error>(error));
+            });
     }
 };
 

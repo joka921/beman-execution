@@ -31,8 +31,9 @@ import beman.execution.detail.ext_transform_completion_channel;
 
 namespace beman::execution::detail {
 struct ext_nullopt_as_void_fun {
-    template <typename Receiver, ::beman::execution::detail::is_optional Opt>
-    auto operator()(Receiver& receiver, ::beman::execution::set_value_t, Opt&& opt) const noexcept -> void {
+    template <typename Receiver, typename Signatures, ::beman::execution::detail::is_optional Opt>
+    auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_value_t, Opt&& opt) const noexcept
+        -> void {
         if (opt) {
             ::beman::execution::set_value(::std::move(receiver), *::std::forward<Opt>(opt));
         } else {

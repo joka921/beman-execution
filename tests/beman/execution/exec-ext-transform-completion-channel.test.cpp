@@ -83,11 +83,11 @@ auto run(Sender&& sndr) -> result {
 // Swap the value and the error channel for completions with an int.
 struct swap_fun {
     template <typename Receiver>
-    auto operator()(Receiver& rcvr, test_std::set_value_t, int v) const noexcept -> void {
+    auto operator()(Receiver&& rcvr, auto, test_std::set_value_t, int v) const noexcept -> void {
         test_std::set_error(std::move(rcvr), v);
     }
     template <typename Receiver>
-    auto operator()(Receiver& rcvr, test_std::set_error_t, int e) const noexcept -> void {
+    auto operator()(Receiver&& rcvr, auto, test_std::set_error_t, int e) const noexcept -> void {
         test_std::set_value(std::move(rcvr), e);
     }
 };
@@ -101,7 +101,7 @@ struct swap_signatures {
 // Turn a value completion with a negative int into stopped.
 struct negative_as_stopped_fun {
     template <typename Receiver>
-    auto operator()(Receiver& rcvr, test_std::set_value_t, int v) const noexcept -> void {
+    auto operator()(Receiver&& rcvr, auto, test_std::set_value_t, int v) const noexcept -> void {
         if (v < 0)
             test_std::set_stopped(std::move(rcvr));
         else
@@ -225,7 +225,7 @@ auto test_pass_through() -> void {
 auto test_stateful_fun() -> void {
     // the function may be move-only and is consumed by the completion
     auto fun = [ptr = std::make_unique<std::string>("from fun")]<typename Receiver>(
-                   Receiver& rcvr, test_std::set_value_t) mutable noexcept {
+                   Receiver&& rcvr, auto, test_std::set_value_t) mutable noexcept {
         test_std::set_error(std::move(rcvr), std::move(*ptr));
     };
     struct signatures {
@@ -244,7 +244,7 @@ auto test_stateful_fun() -> void {
 
 struct env_fun {
     template <typename Receiver>
-    auto operator()(Receiver& rcvr, test_std::set_value_t) const noexcept -> void {
+    auto operator()(Receiver&& rcvr, auto, test_std::set_value_t) const noexcept -> void {
         test_std::set_value(std::move(rcvr), get_value_t{}(test_std::get_env(rcvr)));
     }
 };

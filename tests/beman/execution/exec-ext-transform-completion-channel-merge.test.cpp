@@ -168,7 +168,7 @@ struct non_forwarding_t {
 // Adds the value of get_value and whether non_forwarding is visible to the value.
 struct env_fun {
     template <typename Receiver>
-    auto operator()(Receiver& rcvr, set_value_t, int v) const noexcept -> void {
+    auto operator()(Receiver&& rcvr, auto, set_value_t, int v) const noexcept -> void {
         auto env{test_std::get_env(rcvr)};
         test_std::set_value(std::move(rcvr),
                             10 * v + get_value_t{}(env) + (requires { non_forwarding_t{}(env); } ? 100 : 0));

@@ -74,7 +74,7 @@ import beman.execution.detail.valid_completion_signatures;
 // adaptor which can reroute the completions of sndr to (possibly different)
 // completion channels:
 //
-// - fun is invoked as fun(rcvr, Tag(), args...) for each completion
+// - fun is invoked as fun(rcvr, sigs, Tag(), args...) for each completion
 //   Tag(args...) of sndr it is invocable with. rcvr is an lvalue receiver
 //   which fun has to complete using one of set_value, set_error, or
 //   set_stopped. The invocation has to be noexcept. Completions fun isn't
@@ -139,8 +139,7 @@ inline constexpr bool ext_transform_completion_channel_by_value{false};
 
 template <typename Receiver, typename Signatures>
 struct ext_transform_completion_channel_receiver {
-    using receiver_concept      = ::beman::execution::receiver_tag;
-    using completion_signatures = Signatures;
+    using receiver_concept = ::beman::execution::receiver_tag;
 
     // the receivers used inside merged senders are cheap to copy and stored by value
     ::std::conditional_t<::beman::execution::detail::ext_transform_completion_channel_by_value<Receiver>,
@@ -295,21 +294,26 @@ struct ext_transform_completion_channel_dispatch {
         ::beman::execution::detail::ext_transform_completion_channel_receiver<target_t<Root, Receiver>, signatures>;
 
     template <typename Root, typename Receiver, typename Tag, typename... Args>
-    static constexpr bool can_complete{::std::invocable<Fun, receiver_t<Root, Receiver>&, Tag, Args...> ||
+    static constexpr bool can_complete{::std::invocable<Fun, receiver_t<Root, Receiver>, signatures, Tag, Args...> ||
                                        Cont::template can_complete<Root, Receiver, Tag, Args...>};
 
     template <typename Root, typename Receiver, typename Tag, typename... Args>
     static auto complete(Root& root, Receiver& receiver, Tag, Args&&... args) noexcept -> void {
-        if constexpr (::std::invocable<Fun, receiver_t<Root, Receiver>&, Tag, Args...>) {
-            static_assert(::std::is_nothrow_invocable_v<Fun, receiver_t<Root, Receiver>&, Tag, Args...>,
+        if constexpr (::std::invocable<Fun, receiver_t<Root, Receiver>, signatures, Tag, Args...>) {
+            static_assert(::std::is_nothrow_invocable_v<Fun, receiver_t<Root, Receiver>, signatures, Tag, Args...>,
                           "ext_transform_completion_channel: the function has to be noexcept");
-            receiver_t<Root, Receiver> rcvr{[&] {
-                if constexpr (deliver)
-                    return &receiver;
-                else
-                    return target_t<Root, Receiver>{&root, &receiver};
-            }()};
-            ::std::invoke(::std::move(Path::get(root)), rcvr, Tag(), ::std::forward<Args>(args)...);
+            // the receiver is passed as an rvalue (it is consumed by the completion) together with the
+            // completion signatures declared by the signature transform
+            ::std::invoke(::std::move(Path::get(root)),
+                          receiver_t<Root, Receiver>{[&] {
+                              if constexpr (deliver)
+                                  return &receiver;
+                              else
+                                  return target_t<Root, Receiver>{&root, &receiver};
+                          }()},
+                          signatures{},
+                          Tag(),
+                          ::std::forward<Args>(args)...);
         } else {
             Cont::complete(root, receiver, Tag(), ::std::forward<Args>(args)...);
         }

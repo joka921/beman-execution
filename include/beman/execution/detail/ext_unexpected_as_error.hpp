@@ -45,8 +45,9 @@ template <typename T>
 concept is_expected = ::beman::execution::detail::is_expected_helper<::std::remove_cvref_t<T>>::value;
 
 struct ext_unexpected_as_error_fun {
-    template <typename Receiver, ::beman::execution::detail::is_expected Exp>
-    auto operator()(Receiver& receiver, ::beman::execution::set_value_t, Exp&& exp) const noexcept -> void {
+    template <typename Receiver, typename Signatures, ::beman::execution::detail::is_expected Exp>
+    auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_value_t, Exp&& exp) const noexcept
+        -> void {
         if (exp) {
             if constexpr (::std::is_void_v<typename ::std::remove_cvref_t<Exp>::value_type>) {
                 ::beman::execution::set_value(::std::move(receiver));

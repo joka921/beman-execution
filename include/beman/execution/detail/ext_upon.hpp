@@ -68,8 +68,8 @@ struct ext_upon_fun {
     ext_upon_fun(::std::allocator_arg_t, const Alloc& alloc, const ext_upon_fun& other)
         : fun(::std::make_obj_using_allocator<Fun>(alloc, other.fun)) {}
 
-    template <typename Receiver, typename... Args>
-    auto operator()(Receiver& receiver, Tag, Args&&... args) noexcept -> void {
+    template <typename Receiver, typename Signatures, typename... Args>
+    auto operator()(Receiver&& receiver, Signatures, Tag, Args&&... args) noexcept -> void {
         try {
             auto invoke = [&] { return ::std::invoke(::std::move(this->fun), ::std::forward<Args>(args)...); };
             if constexpr (::std::same_as<void, decltype(invoke())>) {

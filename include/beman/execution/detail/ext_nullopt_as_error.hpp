@@ -38,8 +38,8 @@ template <typename Error>
 struct ext_nullopt_as_error_fun {
     Error error;
 
-    template <typename Receiver, ::beman::execution::detail::is_optional Opt>
-    auto operator()(Receiver& receiver, ::beman::execution::set_value_t, Opt&& opt) noexcept -> void {
+    template <typename Receiver, typename Signatures, ::beman::execution::detail::is_optional Opt>
+    auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_value_t, Opt&& opt) noexcept -> void {
         if (opt) {
             ::beman::execution::set_value(::std::move(receiver), *::std::forward<Opt>(opt));
         } else {

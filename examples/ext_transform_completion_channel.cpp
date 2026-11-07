@@ -32,7 +32,7 @@ namespace ex = beman::execution;
 namespace {
 struct negative_as_error_fun {
     template <typename Receiver>
-    auto operator()(Receiver& rcvr, ex::set_value_t, int value) const noexcept -> void {
+    auto operator()(Receiver&& rcvr, auto /*signatures*/, ex::set_value_t, int value) const noexcept -> void {
         if (value < 0)
             ex::set_error(std::move(rcvr), std::string("negative value: ") + std::to_string(value));
         else

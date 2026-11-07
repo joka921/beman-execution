@@ -50,8 +50,8 @@ template <typename Error>
 struct ext_stopped_as_error_fun {
     Error error;
 
-    template <typename Receiver>
-    auto operator()(Receiver& receiver, ::beman::execution::set_stopped_t) noexcept -> void {
+    template <typename Receiver, typename Signatures>
+    auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_stopped_t) noexcept -> void {
         // The lowered implementation moves the error into a just_error sender
         // and its operation state before completing. Passing the stored error
         // directly avoids these moves (and the possibility of them throwing).

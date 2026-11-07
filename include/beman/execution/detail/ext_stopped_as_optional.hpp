@@ -133,12 +133,13 @@ struct ext_stopped_as_optional_signatures {
     using filter_stopped = typename filter_stopped_helper<Sigs>::type;
 };
 
-// the transformed signatures contain exactly one value completion: set_value_t(optional<V>)
+// the transformed signatures (passed to the function) contain exactly one value completion:
+// set_value_t(optional<V>)
 struct ext_stopped_as_optional_fun {
-    template <typename Receiver, typename... Args>
-    auto operator()(Receiver& receiver, ::beman::execution::set_value_t, Args&&... args) const noexcept -> void {
-        using opt_t =
-            ::beman::execution::detail::ext_single_value_argument_t<typename Receiver::completion_signatures>;
+    template <typename Receiver, typename Signatures, typename... Args>
+    auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_value_t, Args&&... args) const noexcept
+        -> void {
+        using opt_t      = ::beman::execution::detail::ext_single_value_argument_t<Signatures>;
         using value_type = typename opt_t::value_type;
         try {
             ::beman::execution::set_value(::std::move(receiver),
@@ -149,10 +150,9 @@ struct ext_stopped_as_optional_fun {
             }
         }
     }
-    template <typename Receiver>
-    auto operator()(Receiver& receiver, ::beman::execution::set_stopped_t) const noexcept -> void {
-        using opt_t =
-            ::beman::execution::detail::ext_single_value_argument_t<typename Receiver::completion_signatures>;
+    template <typename Receiver, typename Signatures>
+    auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_stopped_t) const noexcept -> void {
+        using opt_t = ::beman::execution::detail::ext_single_value_argument_t<Signatures>;
         ::beman::execution::set_value(::std::move(receiver), opt_t());
     }
 };
