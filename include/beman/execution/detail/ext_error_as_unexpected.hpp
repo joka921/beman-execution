@@ -127,7 +127,8 @@ struct ext_error_as_unexpected_signatures {
 // The transformed signatures contain exactly one value completion:
 // set_value_t(std::expected<V, E>). The signatures passed to the function are
 // used to determine this type as each completion of the sender only knows V or E.
-struct ext_error_as_unexpected_fun {
+struct ext_error_as_unexpected_fun : ::beman::execution::detail::ext_forward_completion {
+    using ::beman::execution::detail::ext_forward_completion::operator();
     template <typename Signatures, typename Receiver, typename Construct>
     static auto complete(Receiver& receiver, Construct construct) noexcept -> void {
         using expected_t = ::beman::execution::detail::ext_single_value_argument_t<Signatures>;

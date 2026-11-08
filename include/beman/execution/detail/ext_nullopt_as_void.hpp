@@ -30,7 +30,8 @@ import beman.execution.detail.ext_transform_completion_channel;
 // ----------------------------------------------------------------------------
 
 namespace beman::execution::detail {
-struct ext_nullopt_as_void_fun {
+struct ext_nullopt_as_void_fun : ::beman::execution::detail::ext_forward_completion {
+    using ::beman::execution::detail::ext_forward_completion::operator();
     template <typename Receiver, typename Signatures, ::beman::execution::detail::is_optional Opt>
     auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_value_t, Opt&& opt) const noexcept
         -> void {
@@ -56,7 +57,7 @@ struct ext_nullopt_as_void_signatures {
  * \headerfile beman/execution.hpp <beman/execution.hpp>
  *
  * Value completions with a single std::optional<T> argument complete with set_value(T) if the optional is engaged and
- * with set_value() otherwise. All other completions are forwarded unchanged.
+ * with set_value() otherwise. Other completions are forwarded unchanged.
  */
 struct ext_nullopt_as_void_t {
     template <::beman::execution::sender Sndr>

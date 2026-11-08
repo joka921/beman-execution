@@ -35,7 +35,8 @@ import beman.execution.detail.ext_transform_completion_channel;
 
 namespace beman::execution::detail {
 template <typename Error>
-struct ext_nullopt_as_error_fun {
+struct ext_nullopt_as_error_fun : ::beman::execution::detail::ext_forward_completion {
+    using ::beman::execution::detail::ext_forward_completion::operator();
     Error error;
 
     template <typename Receiver, typename Signatures, ::beman::execution::detail::is_optional Opt>
@@ -64,7 +65,7 @@ struct ext_nullopt_as_error_signatures {
  *
  * Value completions with a single std::optional<T> argument complete with
  * set_value(T) if the optional is engaged and with set_error(error) otherwise.
- * All other completions are forwarded unchanged.
+ * Other completions are forwarded unchanged.
  */
 struct ext_nullopt_as_error_t {
     template <::beman::execution::sender Sndr, ::beman::execution::detail::movable_value Error>
@@ -72,7 +73,7 @@ struct ext_nullopt_as_error_t {
         using error_t = ::std::remove_cvref_t<Error>;
         return ::beman::execution::ext_transform_completion_channel(
             ::std::forward<Sndr>(sndr),
-            ::beman::execution::detail::ext_nullopt_as_error_fun<error_t>{::std::forward<Error>(error)},
+            ::beman::execution::detail::ext_nullopt_as_error_fun<error_t>{{}, ::std::forward<Error>(error)},
             ::beman::execution::ext_each_completion_signature(
                 ::beman::execution::detail::ext_nullopt_as_error_signatures<error_t>{}));
     }

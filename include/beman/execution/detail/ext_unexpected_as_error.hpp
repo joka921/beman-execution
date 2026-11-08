@@ -44,7 +44,8 @@ struct is_expected_helper<::std::expected<T, E>> : ::std::true_type {};
 template <typename T>
 concept is_expected = ::beman::execution::detail::is_expected_helper<::std::remove_cvref_t<T>>::value;
 
-struct ext_unexpected_as_error_fun {
+struct ext_unexpected_as_error_fun : ::beman::execution::detail::ext_forward_completion {
+    using ::beman::execution::detail::ext_forward_completion::operator();
     template <typename Receiver, typename Signatures, ::beman::execution::detail::is_expected Exp>
     auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_value_t, Exp&& exp) const noexcept
         -> void {

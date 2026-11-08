@@ -47,7 +47,8 @@ import beman.execution.detail.set_stopped;
 
 namespace beman::execution::detail {
 template <typename Error>
-struct ext_stopped_as_error_fun {
+struct ext_stopped_as_error_fun : ::beman::execution::detail::ext_forward_completion {
+    using ::beman::execution::detail::ext_forward_completion::operator();
     Error error;
 
     template <typename Receiver, typename Signatures>
@@ -103,7 +104,7 @@ struct ext_stopped_as_error_t {
     auto operator()(Sndr&& sndr, Error error) const {
         return ::beman::execution::ext_transform_completion_channel(
             ::std::forward<Sndr>(sndr),
-            ::beman::execution::detail::ext_stopped_as_error_fun<Error>{::std::move(error)},
+            ::beman::execution::detail::ext_stopped_as_error_fun<Error>{{}, ::std::move(error)},
             ::beman::execution::detail::ext_stopped_as_error_signatures<Error>{});
     }
 

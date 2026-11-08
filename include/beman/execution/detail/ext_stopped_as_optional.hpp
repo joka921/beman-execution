@@ -135,7 +135,8 @@ struct ext_stopped_as_optional_signatures {
 
 // the transformed signatures (passed to the function) contain exactly one value completion:
 // set_value_t(optional<V>)
-struct ext_stopped_as_optional_fun {
+struct ext_stopped_as_optional_fun : ::beman::execution::detail::ext_forward_completion {
+    using ::beman::execution::detail::ext_forward_completion::operator();
     template <typename Receiver, typename Signatures, typename... Args>
     auto operator()(Receiver&& receiver, Signatures, ::beman::execution::set_value_t, Args&&... args) const noexcept
         -> void {

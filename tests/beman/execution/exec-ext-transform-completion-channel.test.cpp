@@ -9,6 +9,7 @@ import std;
 #else
 #include <concepts>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #endif
@@ -99,7 +100,9 @@ struct swap_signatures {
 };
 
 // Turn a value completion with a negative int into stopped.
-struct negative_as_stopped_fun {
+// other completions (here: value without an int, error, stopped) are forwarded by the base class
+struct negative_as_stopped_fun : test_std::ext_forward_completion {
+    using test_std::ext_forward_completion::operator();
     template <typename Receiver>
     auto operator()(Receiver&& rcvr, auto, test_std::set_value_t, int v) const noexcept -> void {
         if (v < 0)
@@ -152,6 +155,38 @@ auto test_ext_each_completion_signature() -> void {
                                                                                   test_std::set_error_t(int)>{}))>);
     static_assert(
         std::same_as<test_std::completion_signatures<>, decltype(transform(test_std::completion_signatures<>{}))>);
+}
+
+struct stopped_as_optional_signatures {
+    template <typename T>
+    consteval auto operator()(test_std::set_value_t (*)(T)) const {
+        return test_std::completion_signatures<test_std::set_value_t(std::optional<T>)>{};
+    }
+    template <typename E>
+    consteval auto operator()(test_std::set_error_t (*)(E)) const {
+        return test_std::completion_signatures<test_std::set_error_t(E)>{};
+    }
+    consteval auto operator()(test_std::set_stopped_t (*)()) const { return test_std::completion_signatures<>{}; }
+};
+
+template <typename Transform, typename Signatures>
+concept transforms = requires(const Transform& transform) { transform(Signatures{}); };
+
+auto test_ext_all_completion_signature() -> void {
+    constexpr auto transform{test_std::ext_all_completion_signature(stopped_as_optional_signatures{})};
+    using all_t  = decltype(transform);
+    using each_t = decltype(test_std::ext_each_completion_signature(stopped_as_optional_signatures{}));
+    static_assert(std::same_as<test_std::completion_signatures<test_std::set_value_t(std::optional<int>),
+                                                               test_std::set_error_t(int)>,
+                               decltype(transform(test_std::completion_signatures<test_std::set_value_t(int),
+                                                                                  test_std::set_stopped_t(),
+                                                                                  test_std::set_error_t(int)>{}))>);
+    static_assert(
+        std::same_as<test_std::completion_signatures<>, decltype(transform(test_std::completion_signatures<>{}))>);
+    // a signature the transform doesn't accept makes the transform not invocable (instead of retaining it)
+    static_assert(transforms<all_t, test_std::completion_signatures<test_std::set_value_t(int)>>);
+    static_assert(not transforms<all_t, test_std::completion_signatures<test_std::set_value_t(int, int)>>);
+    static_assert(transforms<each_t, test_std::completion_signatures<test_std::set_value_t(int, int)>>);
 }
 
 auto test_declared() -> void {
@@ -292,6 +327,7 @@ TEST(exec_ext_transform_completion_channel) {
                                decltype(test_std::ext_transform_completion_channel)>);
     test_signatures();
     test_ext_each_completion_signature();
+    test_ext_all_completion_signature();
     test_declared();
     test_runtime();
     test_pass_through();

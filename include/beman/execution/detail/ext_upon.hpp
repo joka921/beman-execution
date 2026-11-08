@@ -53,7 +53,8 @@ import beman.execution.detail.then;
 
 namespace beman::execution::detail {
 template <typename Tag, typename Fun>
-struct ext_upon_fun {
+struct ext_upon_fun : ::beman::execution::detail::ext_forward_completion {
+    using ::beman::execution::detail::ext_forward_completion::operator();
     Fun fun;
 
     template <typename F>
