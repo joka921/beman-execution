@@ -21,6 +21,16 @@ list(
     exec-dependent-sender.test
     exec-domain-default.test
     exec-env.test
+    exec-ext-error-as-unexpected.test
+    exec-ext-nullopt-as-error.test
+    exec-ext-nullopt-as-stopped.test
+    exec-ext-nullopt-as-void.test
+    exec-ext-stopped-as-error.test
+    exec-ext-stopped-as-optional.test
+    exec-ext-transform-completion-channel-merge.test
+    exec-ext-transform-completion-channel.test
+    exec-ext-unexpected-as-error.test
+    exec-ext-upon.test
     exec-fwd-env.test
     exec-general.test
     exec-getcomplsigs.test
