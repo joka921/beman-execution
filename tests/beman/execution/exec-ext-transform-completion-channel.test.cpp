@@ -318,6 +318,44 @@ auto test_attributes() -> void {
             s, negative_as_stopped_fun{}, test_std::ext_each_completion_signature(negative_as_stopped_signatures{})));
     test::test_sender_env<false>(84, test::test_non_forwardable_attr{}, s | t);
 }
+// the signature transform may return a class with a member typedef completion_signatures; the object is
+// passed to the function and can carry additional members (here: the number of the child's signatures)
+struct struct_result_signatures {
+    template <typename... Sigs>
+    consteval auto operator()(test_std::completion_signatures<Sigs...>) const {
+        struct result {
+            using completion_signatures = test_std::completion_signatures<test_std::set_value_t(int)>;
+            static consteval auto count() -> int { return sizeof...(Sigs); }
+        };
+        return result{};
+    }
+};
+struct struct_result_fun : test_std::ext_forward_completion {
+    using test_std::ext_forward_completion::operator();
+    template <typename Receiver, typename Sigs>
+    auto operator()(Receiver&& rcvr, Sigs, test_std::set_value_t) const noexcept -> void {
+        test_std::set_value(std::move(rcvr), Sigs::count());
+    }
+};
+
+auto test_struct_result() -> void {
+    auto sndr{test_std::just() |
+              test_std::ext_transform_completion_channel(struct_result_fun{}, struct_result_signatures{})};
+    static_assert(std::same_as<test_std::completion_signatures<test_std::set_value_t(int)>,
+                               test_std::completion_signatures_of_t<decltype(sndr), test_std::env<>>>);
+    auto res{run(std::move(sndr))};
+    ASSERT(res.completed == channel::value);
+    ASSERT(res.value == 1);
+}
+
+auto test_operator_plus() -> void {
+    using a = test_std::completion_signatures<test_std::set_value_t(int), test_std::set_stopped_t()>;
+    using b = test_std::completion_signatures<test_std::set_stopped_t(), test_std::set_error_t(int)>;
+    static_assert(
+        std::same_as<decltype(a{} + b{}),
+                     test_std::completion_signatures<test_std::set_value_t(int), test_std::set_stopped_t(), test_std::set_error_t(int)>>);
+    static_assert(std::same_as<decltype(test_std::completion_signatures<>{} + a{}), a>);
+}
 } // namespace
 
 // ----------------------------------------------------------------------------
@@ -334,4 +372,6 @@ TEST(exec_ext_transform_completion_channel) {
     test_stateful_fun();
     test_env();
     test_attributes();
+    test_struct_result();
+    test_operator_plus();
 }

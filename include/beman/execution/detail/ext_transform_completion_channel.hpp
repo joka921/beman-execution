@@ -82,7 +82,10 @@ import beman.execution.detail.valid_completion_signatures;
 //   operator() which forwards a completion unchanged.
 // - sig_transform is a stateless, default constructible function object
 //   which is called (at compile time) with the completion_signatures of
-//   sndr and returns the completion_signatures of the resulting sender.
+//   sndr and returns the completion_signatures of the resulting sender,
+//   or an object of a class type with a public member typedef
+//   completion_signatures naming them (the object is passed to fun as sigs,
+//   so it can carry additional members fun needs).
 //   ext_each_completion_signature(fn) creates such a function object from a
 //   function object fn transforming individual signatures (signatures fn
 //   doesn't accept are retained); ext_all_completion_signature(fn) does the
@@ -100,6 +103,24 @@ import beman.execution.detail.valid_completion_signatures;
 // ----------------------------------------------------------------------------
 
 namespace beman::execution::detail {
+template <typename R>
+concept ext_transform_completion_channel_result =
+    ::beman::execution::detail::valid_completion_signatures<R> ||
+    requires { typename R::completion_signatures; };
+
+// The completion signatures named by the result of a signature transform.
+template <typename R>
+struct ext_transform_completion_channel_result_signatures {
+    using type = typename R::completion_signatures;
+};
+template <::beman::execution::detail::valid_completion_signatures R>
+struct ext_transform_completion_channel_result_signatures<R> {
+    using type = R;
+};
+template <typename R>
+using ext_transform_completion_channel_signatures_t =
+    typename ::beman::execution::detail::ext_transform_completion_channel_result_signatures<R>::type;
+
 template <typename SigFun>
 concept completion_signatures_transform =
     ::std::is_empty_v<SigFun> && ::std::default_initializable<SigFun> && ::std::copy_constructible<SigFun>;
@@ -296,9 +317,12 @@ template <typename Fun,
           typename Path = ::beman::execution::detail::ext_transform_completion_channel_path_root,
           typename Cont = ::beman::execution::detail::ext_transform_completion_channel_deliver>
 struct ext_transform_completion_channel_dispatch {
-    using signatures = decltype(SigFun{}(ChildSigs{}));
-    static_assert(::beman::execution::detail::valid_completion_signatures<signatures>,
-                  "ext_transform_completion_channel: the signature transform has to return completion_signatures");
+    // the result of the signature transform is passed to the function; it names the signatures
+    using result = decltype(SigFun{}(ChildSigs{}));
+    static_assert(::beman::execution::detail::ext_transform_completion_channel_result<result>,
+                  "ext_transform_completion_channel: the signature transform has to return completion_signatures "
+                  "or a class with a member typedef completion_signatures");
+    using signatures = ::beman::execution::detail::ext_transform_completion_channel_signatures_t<result>;
 
     static constexpr bool deliver{
         ::std::same_as<Cont, ::beman::execution::detail::ext_transform_completion_channel_deliver>};
@@ -312,17 +336,17 @@ struct ext_transform_completion_channel_dispatch {
         ::beman::execution::detail::ext_transform_completion_channel_receiver<target_t<Root, Receiver>, signatures>;
 
     template <typename Root, typename Receiver, typename Tag, typename... Args>
-    static constexpr bool can_complete{::std::invocable<Fun, receiver_t<Root, Receiver>, signatures, Tag, Args...>};
+    static constexpr bool can_complete{::std::invocable<Fun, receiver_t<Root, Receiver>, result, Tag, Args...>};
 
     template <typename Root, typename Receiver, typename Tag, typename... Args>
     static auto complete(Root& root, Receiver& receiver, Tag, Args&&... args) noexcept -> void {
-        static_assert(::std::invocable<Fun, receiver_t<Root, Receiver>, signatures, Tag, Args...>,
+        static_assert(::std::invocable<Fun, receiver_t<Root, Receiver>, result, Tag, Args...>,
                       "ext_transform_completion_channel: the function has to accept every completion of the child "
                       "sender (derive from ext_forward_completion to forward completions unchanged)");
-        static_assert(::std::is_nothrow_invocable_v<Fun, receiver_t<Root, Receiver>, signatures, Tag, Args...>,
+        static_assert(::std::is_nothrow_invocable_v<Fun, receiver_t<Root, Receiver>, result, Tag, Args...>,
                       "ext_transform_completion_channel: the function has to be noexcept");
         // the receiver is passed as an rvalue (it is consumed by the completion) together with the
-        // completion signatures declared by the signature transform
+        // result of the signature transform (naming the declared completion signatures)
         ::std::invoke(::std::move(Path::get(root)),
                       receiver_t<Root, Receiver>{[&] {
                           if constexpr (deliver)
@@ -330,7 +354,7 @@ struct ext_transform_completion_channel_dispatch {
                           else
                               return target_t<Root, Receiver>{&root, &receiver};
                       }()},
-                      signatures{},
+                      result{},
                       Tag(),
                       ::std::forward<Args>(args)...);
     }
@@ -433,10 +457,11 @@ template <typename Inner, typename Outer>
 struct ext_transform_completion_channel_composed_signatures {
     template <typename Sigs>
     consteval auto operator()(Sigs sigs) const {
-        using inner_sigs = decltype(Inner{}(sigs));
-        static_assert(::beman::execution::detail::valid_completion_signatures<inner_sigs>,
-                      "ext_transform_completion_channel: the signature transform has to return completion_signatures");
-        return Outer{}(inner_sigs{});
+        using inner_result = decltype(Inner{}(sigs));
+        static_assert(::beman::execution::detail::ext_transform_completion_channel_result<inner_result>,
+                      "ext_transform_completion_channel: the signature transform has to return completion_signatures "
+                      "or a class with a member typedef completion_signatures");
+        return Outer{}(::beman::execution::detail::ext_transform_completion_channel_signatures_t<inner_result>{});
     }
 };
 
@@ -448,7 +473,8 @@ struct ext_transform_completion_channel_dispatch<
     ChildSigs,
     Path,
     Cont> {
-    using inner_signatures = decltype(S1{}(ChildSigs{}));
+    using inner_signatures =
+        ::beman::execution::detail::ext_transform_completion_channel_signatures_t<decltype(S1{}(ChildSigs{}))>;
     using outer            = ::beman::execution::detail::ext_transform_completion_channel_dispatch<
         F2,
         S2,

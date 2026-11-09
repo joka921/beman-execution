@@ -8,4 +8,5 @@ export module beman.execution.detail.completion_signatures;
 
 namespace beman::execution {
 export using beman::execution::completion_signatures;
+export using beman::execution::operator+;
 } // namespace beman::execution

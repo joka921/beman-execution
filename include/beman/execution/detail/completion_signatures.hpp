@@ -13,8 +13,10 @@ import std;
 #endif
 #ifdef BEMAN_HAS_MODULES
 import beman.execution.detail.completion_signature;
+import beman.execution.detail.meta_unique;
 #else
 #include <beman/execution/detail/completion_signature.hpp>
+#include <beman/execution/detail/meta_unique.hpp>
 #endif
 
 // ----------------------------------------------------------------------------
@@ -46,6 +48,20 @@ struct completion_signatures {
         (fun(static_cast<Signatures*>(nullptr)), ...);
     }
 };
+
+/*!
+ * \brief Concatenates two lists of completion signatures, removing duplicates.
+ * \headerfile beman/execution.hpp <beman/execution.hpp>
+ *
+ * \details
+ * The operator allows computing completion signatures from per-signature
+ * results using a fold expression: (completion_signatures<>{} + ... + f(Sigs*)).
+ * Non-standard extension.
+ */
+template <::beman::execution::detail::completion_signature... A, ::beman::execution::detail::completion_signature... B>
+consteval auto operator+(completion_signatures<A...>, completion_signatures<B...>) noexcept {
+    return ::beman::execution::detail::meta::unique<completion_signatures<A..., B...>>{};
+}
 } // namespace beman::execution
 
 // ----------------------------------------------------------------------------
